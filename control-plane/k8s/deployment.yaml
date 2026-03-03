@@ -1,0 +1,151 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vajra-control-plane
+  namespace: vajra-system
+  labels:
+    app: vajra-control-plane
+    component: control-plane
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vajra-control-plane
+  template:
+    metadata:
+      labels:
+        app: vajra-control-plane
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: vajra-sa
+
+      # OPTIMIZED: Removed PVC volume - using RGW
+      containers:
+        - name: control-plane
+          image: aayud/vajra-control-plane:latest
+          imagePullPolicy: Always
+
+          ports:
+            - containerPort: 8000
+              name: http
+
+          env:
+            - name: VAJRA_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: vajra-secrets
+                  key: api-key
+
+            - name: QDRANT_HOST
+              value: qdrant.vajra-system.svc.cluster.local
+            - name: QDRANT_PORT
+              value: "6333"
+            - name: QDRANT_COLLECTION
+              value: vajra-cache
+            # OPTIMIZED: Cache settings
+            - name: CACHE_MAX_ENTRIES
+              value: "1000"
+            - name: CACHE_CLEANUP_INTERVAL
+              value: "3600"
+
+            # AWS Configuration
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: vajra-secrets
+                  key: aws-access-key-id
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: vajra-secrets
+                  key: aws-secret-access-key
+            - name: AWS_REGION
+              valueFrom:
+                secretKeyRef:
+                  name: vajra-secrets
+                  key: aws-region
+            - name: AWS_GPU_INSTANCE_TYPE
+              value: "g4dn.xlarge"
+            - name: AWS_GPU_AMI
+              value: "ami-0a8b4cd6c7c9a7b9a"
+            - name: AWS_KEY_NAME
+              value: "vajra-key"
+            - name: AWS_SECURITY_GROUP_ID
+              value: "sg-09864aa441c6b0d16"
+            - name: AWS_SUBNET_ID
+              value: "subnet-00c16128e8392de0a"
+            - name: AWS_ECR_REPOSITORY
+              value: "925774240430.dkr.ecr.us-east-1.amazonaws.com/vajra-gpu"
+            - name: HF_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: vajra-secrets
+                  key: hf-token
+
+            # RGW Configuration (NEW)
+            - name: RGW_ENDPOINT
+              valueFrom:
+                secretKeyRef:
+                  name: vajra-secrets
+                  key: rgw-endpoint
+            - name: RGW_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: vajra-secrets
+                  key: rgw-access-key
+            - name: RGW_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: vajra-secrets
+                  key: rgw-secret-key
+            - name: RGW_BUCKET
+              valueFrom:
+                secretKeyRef:
+                  name: vajra-secrets
+                  key: rgw-bucket
+            - name: RGW_REGION
+              valueFrom:
+                secretKeyRef:
+                  name: vajra-secrets
+                  key: rgw-region
+            - name: RGW_PATH_STYLE
+              value: "true"
+
+            - name: CPU_MODEL_ENDPOINT
+              value: http://vajra-cpu-model.vajra-system.svc.cluster.local:8000/v1/chat/completions
+
+            - name: CPU_MODEL
+              value: phi-3-mini-4k-instruct
+
+            - name: DAILY_BUDGET
+              value: "5.00"
+
+            - name: AWS_GPU_COST_PER_HOUR
+              value: "0.526"
+
+            # OPTIMIZED: Removed COST_STORAGE_PATH - using RGW
+
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1Gi"
+              cpu: "500m"
+
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 15

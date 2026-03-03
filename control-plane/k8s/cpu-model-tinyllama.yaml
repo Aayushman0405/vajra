@@ -1,0 +1,98 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: vajra-cpu-model-cache
+  namespace: vajra-system
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: ceph-rbd
+  resources:
+    requests:
+      storage: 20Gi  # Increased to 20GB
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vajra-cpu-model
+  namespace: vajra-system
+  labels:
+    app: vajra-cpu-model
+    component: cpu-inference
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vajra-cpu-model
+  template:
+    metadata:
+      labels:
+        app: vajra-cpu-model
+    spec:
+      volumes:
+      - name: model-cache
+        persistentVolumeClaim:
+          claimName: vajra-cpu-model-cache
+      containers:
+      - name: cpu-model
+        image: aayud/vajra-cpu-model:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+        volumeMounts:
+        - name: model-cache
+          mountPath: /root/.cache/huggingface
+        env:
+        - name: MODEL_NAME
+          value: "TinyLlama/TinyLlama-1.1B-Chat-v1.0"  # Smallest model (1.1B)
+        - name: NUM_CPU_THREADS
+          value: "2"
+        - name: OMP_NUM_THREADS
+          value: "2"
+        - name: HF_HOME
+          value: "/root/.cache/huggingface"
+        - name: TRANSFORMERS_OFFLINE
+          value: "0"
+        - name: PYTHONUNBUFFERED
+          value: "1"
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          failureThreshold: 60
+          periodSeconds: 10
+          initialDelaySeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 300
+          periodSeconds: 30
+          failureThreshold: 6
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 180
+          periodSeconds: 10
+          failureThreshold: 3
+        resources:
+          requests:
+            memory: "2Gi"  # TinyLlama needs less memory
+            cpu: "500m"
+          limits:
+            memory: "3Gi"
+            cpu: "2000m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vajra-cpu-model
+  namespace: vajra-system
+spec:
+  selector:
+    app: vajra-cpu-model
+  ports:
+  - port: 8000
+    targetPort: 8000
+  type: ClusterIP

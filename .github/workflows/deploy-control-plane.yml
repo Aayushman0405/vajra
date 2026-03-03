@@ -1,0 +1,38 @@
+name: Deploy Vajra Control Plane
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'control-plane/**'
+      - '.github/workflows/deploy-control-plane.yml'
+
+env:
+  REGISTRY: docker.io
+  IMAGE_NAME: aayud/vajra-control-plane
+  NAMESPACE: vajra-system
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Docker Login
+        run: |
+          echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login \
+            -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
+      
+      - name: Build and Push
+        run: |
+          docker build -t $IMAGE_NAME:${{ github.sha }} control-plane/
+          docker tag $IMAGE_NAME:${{ github.sha }} $IMAGE_NAME:latest
+          docker push $IMAGE_NAME:${{ github.sha }}
+          docker push $IMAGE_NAME:latest
+      
+      - name: Deploy to Kubernetes
+        run: |
+          kubectl set image deployment/vajra-control-plane \
+            -n $NAMESPACE \
+            control-plane=$IMAGE_NAME:${{ github.sha }}
+          kubectl rollout status deployment/vajra-control-plane -n $NAMESPACE

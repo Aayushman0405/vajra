@@ -1,0 +1,134 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: qdrant
+  namespace: vajra-system
+  annotations:
+    description: "Optimized Qdrant with memory + Ceph RBD storage for cache"
+spec:
+  serviceName: qdrant
+  replicas: 1
+  selector:
+    matchLabels:
+      app: qdrant
+  template:
+    metadata:
+      labels:
+        app: qdrant
+    spec:
+      containers:
+      - name: qdrant
+        image: qdrant/qdrant:v1.8.0
+        ports:
+        - containerPort: 6333
+          name: http
+        - containerPort: 6334
+          name: grpc
+        env:
+        - name: QDRANT__SERVICE__GRPC_PORT
+          value: "6334"
+        - name: QDRANT__STORAGE__STORAGE_PATH
+          value: "/qdrant/storage"
+        - name: QDRANT__STORAGE__OPTIMIZER__DEFAULT_SEGMENT_NUMBER
+          value: "2"
+        - name: QDRANT__STORAGE__OPTIMIZER__MEMORY_BUDGET
+          value: "256MB"
+        - name: QDRANT__LOG_LEVEL
+          value: "INFO"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "200m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        volumeMounts:
+        - name: storage
+          mountPath: /qdrant/storage
+        # FIXED: Use correct Qdrant health endpoints
+        livenessProbe:
+          httpGet:
+            path: /healthz  # Changed from /health
+            port: 6333
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /healthz  # Changed from /health
+            port: 6333
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          failureThreshold: 3
+        lifecycle:
+          preStop:
+            exec:
+              command: ["/bin/sh", "-c", "curl -X POST http://localhost:6333/operations/shutdown?timeout=30"]
+  volumeClaimTemplates:
+  - metadata:
+      name: storage
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      storageClassName: ceph-rbd
+      resources:
+        requests:
+          storage: 2Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: qdrant
+  namespace: vajra-system
+spec:
+  type: ClusterIP
+  ports:
+  - port: 6333
+    name: http
+    targetPort: 6333
+  - port: 6334
+    name: grpc
+    targetPort: 6334
+  selector:
+    app: qdrant
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: qdrant-cache-cleanup
+  namespace: vajra-system
+spec:
+  schedule: "0 */6 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: cleanup
+            image: curlimages/curl:8.5.0
+            command:
+            - /bin/sh
+            - -c
+            - |
+              # Get date 24 hours ago in ISO format
+              if date -u -d '24 hours ago' 2>/dev/null; then
+                EXPIRY_DATE=$(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%S)
+              else
+                EXPIRY_DATE=$(date -u -v-24H +%Y-%m-%dT%H:%M:%S)
+              fi
+              
+              # Delete old points - using correct endpoint
+              curl -X POST http://qdrant:6333/collections/vajra-cache/points/delete \
+                -H 'Content-Type: application/json' \
+                -d "{
+                  \"filter\": {
+                    \"must\": [
+                      {
+                        \"key\": \"cached_at\",
+                        \"range\": {
+                          \"lt\": \"${EXPIRY_DATE}\"
+                        }
+                      }
+                    ]
+                  }
+                }"
+          restartPolicy: OnFailure

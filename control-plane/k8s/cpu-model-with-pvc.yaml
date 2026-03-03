@@ -1,0 +1,98 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: vajra-cpu-model-cache
+  namespace: vajra-system
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: ceph-rbd
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vajra-cpu-model
+  namespace: vajra-system
+  labels:
+    app: vajra-cpu-model
+    component: cpu-inference
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vajra-cpu-model
+  template:
+    metadata:
+      labels:
+        app: vajra-cpu-model
+    spec:
+      volumes:
+      - name: model-cache
+        persistentVolumeClaim:
+          claimName: vajra-cpu-model-cache
+      containers:
+      - name: cpu-model
+        image: aayud/vajra-cpu-model:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+        volumeMounts:
+        - name: model-cache
+          mountPath: /root/.cache/huggingface
+        env:
+        - name: MODEL_NAME
+          value: "microsoft/Phi-3-mini-4k-instruct"
+        - name: NUM_CPU_THREADS
+          value: "2"
+        - name: OMP_NUM_THREADS
+          value: "2"
+        - name: HF_HOME
+          value: "/root/.cache/huggingface"
+        - name: HF_HUB_ENABLE_HF_TRANSFER
+          value: "1"
+        - name: TRANSFORMERS_OFFLINE
+          value: "0"  # Set to 1 after first load to use cached model
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          failureThreshold: 120  # Give it 20 minutes to load
+          periodSeconds: 10
+          initialDelaySeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 600  # Wait 10 minutes before liveness checks
+          periodSeconds: 30
+          failureThreshold: 6
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 300  # Wait 5 minutes before readiness checks
+          periodSeconds: 10
+          failureThreshold: 3
+        resources:
+          requests:
+            memory: "4Gi"
+            cpu: "500m"
+          limits:
+            memory: "6Gi"
+            cpu: "2000m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vajra-cpu-model
+  namespace: vajra-system
+spec:
+  selector:
+    app: vajra-cpu-model
+  ports:
+  - port: 8000
+    targetPort: 8000
+  type: ClusterIP

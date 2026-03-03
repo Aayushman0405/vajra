@@ -1,0 +1,30 @@
+name: Build GPU Inference Image
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'gpu-node/**'
+      - '.github/workflows/build-gpu-image.yml'
+
+env:
+  REGISTRY: docker.io
+  IMAGE_NAME: aayud/vajra-gpu-node
+
+jobs:
+  build:
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Docker Login
+        run: |
+          echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login \
+            -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
+      
+      - name: Build and Push
+        run: |
+          docker build -t $IMAGE_NAME:${{ github.sha }} gpu-node/
+          docker tag $IMAGE_NAME:${{ github.sha }} $IMAGE_NAME:latest
+          docker push $IMAGE_NAME:${{ github.sha }}
+          docker push $IMAGE_NAME:latest

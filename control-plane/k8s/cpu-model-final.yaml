@@ -1,0 +1,76 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vajra-cpu-model
+  namespace: vajra-system
+  labels:
+    app: vajra-cpu-model
+    component: cpu-inference
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vajra-cpu-model
+  template:
+    metadata:
+      labels:
+        app: vajra-cpu-model
+    spec:
+      containers:
+      - name: cpu-model
+        image: aayud/vajra-cpu-model:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+        env:
+        - name: MODEL_NAME
+          value: "microsoft/Phi-3-mini-4k-instruct"
+        - name: NUM_CPU_THREADS
+          value: "2"
+        - name: OMP_NUM_THREADS
+          value: "2"
+        - name: HF_HOME
+          value: "/tmp/hf_cache"  # Use HF_HOME instead of TRANSFORMERS_CACHE
+        - name: HF_HUB_ENABLE_HF_TRANSFER
+          value: "1"  # Faster downloads
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          failureThreshold: 60  # Give it 10 minutes to load
+          periodSeconds: 10
+          initialDelaySeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 300  # Wait 5 minutes before starting liveness
+          periodSeconds: 30
+          failureThreshold: 6
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 120
+          periodSeconds: 10
+          failureThreshold: 3
+        resources:
+          requests:
+            memory: "4Gi"    # Increased from 3Gi
+            cpu: "500m"
+          limits:
+            memory: "6Gi"    # Increased limit
+            cpu: "2000m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vajra-cpu-model
+  namespace: vajra-system
+spec:
+  selector:
+    app: vajra-cpu-model
+  ports:
+  - port: 8000
+    targetPort: 8000
+  type: ClusterIP

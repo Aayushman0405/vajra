@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.env
+.venv
+ENV/
+env.bak/
+venv.bak/
+
+# Secrets
+control-plane/k8s/aws-secrets.yaml
+control-plane/k8s/*secret*.yaml
+control-plane/k8s/*-secrets.yaml
+control-plane/k8s/secrets.yaml
+control-plane/.env
+*.secret.yaml
+*-secrets.yaml
+**/*secret*.yaml
+
+# Terraform
+*.tfstate
+*.tfstate.*
+terraform.tfvars
+*.tfvars
+.terraform/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Local testing
+demo/test-results/
+*.log
+
+# AWS
+.aws/
+credentials
+config
+
+# Kubernetes
+kubeconfig
+*.kubeconfig
+
+# Docker
+*.tar
+*.dmg
+*.pkg
