@@ -69,10 +69,10 @@ Query: "Write a Python function to reverse a linked list"
 💾 Storage Strategy
 Optimized Resource Usage
 
-Component	   Storage Type	Size	Purpose
-Qdrant Cache	Ceph RBD (PVC)	2Gi	Semantic cache with auto-cleanup
-Cost Tracking	RGW (S3)	1Gi	Daily budget persistence
-Model Cache	   Ceph RBD (PVC)	20Gi	HuggingFace model storage
+Component	      Storage Type	  Size	Purpose
+Qdrant Cache	  Ceph RBD (PVC)	2Gi	  Semantic cache with auto-cleanup
+Cost Tracking	  RGW (S3)	      1Gi	  Daily budget persistence
+Model Cache	    Ceph RBD (PVC)	20Gi	HuggingFace model storage
 
 
 Cache Management
